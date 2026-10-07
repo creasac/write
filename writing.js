@@ -1,7 +1,19 @@
 (() => {
   const editor = document.querySelector('textarea');
   let revision = 0;
-  editor.addEventListener('input', () => { revision++; });
+  const storageKey = 'writing.session.v1';
+  try {
+    const saved = JSON.parse(sessionStorage.getItem(storageKey));
+    if (saved && typeof saved.text === 'string' && saved.text.length <= 1000000 && Number.isSafeInteger(saved.revision) && saved.revision >= 0) {
+      editor.value = saved.text;
+      revision = saved.revision;
+    }
+  } catch { /* Writing remains available when session storage is blocked or malformed. */ }
+  const persist = () => {
+    try { sessionStorage.setItem(storageKey, JSON.stringify({ text: editor.value, revision })); }
+    catch { /* Storage failures must not interrupt editing or WebMCP. */ }
+  };
+  editor.addEventListener('input', () => { revision++; persist(); });
   const result = data => ({ content: [{ type: 'text', text: JSON.stringify(data) }] });
   const read = () => result({ text: editor.value, revision });
   const write = ({ text, expected_revision }) => {
@@ -9,6 +21,7 @@
     if (expected_revision !== revision) return { isError: true, ...result({ error: 'Revision conflict. Read again before writing.', revision }) };
     editor.value = text;
     revision++;
+    persist();
     editor.focus();
     editor.setSelectionRange(text.length, text.length);
     return read();
